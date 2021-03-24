@@ -4,6 +4,7 @@ std = [
     'codec/std',
     'frame-support/std',
     'frame-system/std',
+    'sp-std/std',
 ]
 [dependencies.codec]
 default-features = false
@@ -18,6 +19,12 @@ branch = 'rococo-v1'
 version = '3.0.0'
 
 [dependencies.frame-system]
+default-features = false
+git = 'https://github.com/paritytech/substrate.git'
+branch = 'rococo-v1'
+version = '3.0.0'
+
+[dependencies.sp-std]
 default-features = false
 git = 'https://github.com/paritytech/substrate.git'
 branch = 'rococo-v1'
@@ -46,11 +53,11 @@ version = '3.0.0'
 
 [package]
 authors = ['Anonymous']
-description = 'FRAME pallet template for defining custom runtime logic.'
+description = 'FRAME pallet template for defining custom asset exchange.'
 edition = '2018'
 homepage = 'https://substrate.dev'
 license = 'Unlicense'
-name = 'pallet-template'
+name = 'pallet-asset-exchange'
 readme = 'README.md'
 repository = 'https://github.com/paritytech/substrate/'
 version = '3.0.0'

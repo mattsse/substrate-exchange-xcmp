@@ -170,10 +170,10 @@ git = 'https://github.com/paritytech/substrate.git'
 branch = 'rococo-v1'
 version = '3.0.0'
 
-[dependencies.template]
+[dependencies.pallet-asset-exchange]
 default-features = false
-package = 'pallet-template'
-path = '../pallets/template'
+package = 'pallet-asset-exchange'
+path = '../pallets/asset-exchange'
 version = '3.0.0'
 
 
