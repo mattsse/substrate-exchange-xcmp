@@ -13,7 +13,7 @@ pub enum Pool<T: Config> {
 }
 
 impl<T: Config> Pool<T> {
-    /// Adds the amounts of tokens to liquidity pool and returns number of shares that this user receives.
+    /// Adds the amounts of assets to liquidity pool and returns number of shares that this user receives.
     ///
     /// Updates amount to amount kept in the pool.
     pub fn add_liquidity(

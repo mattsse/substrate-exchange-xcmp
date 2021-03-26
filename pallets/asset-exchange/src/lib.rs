@@ -142,8 +142,25 @@ pub mod pallet {
         pub amount_in: Option<Balance>,
         /// Asset to swap into.
         pub asset_out: AssetId,
-        /// Required minimum amount of token_out.
+        /// Required minimum amount of asset_out.
         pub min_amount_out: Balance,
+    }
+
+    /// Information about a completed `AssetSwap`
+    #[derive(Clone, PartialEq, Eq, Encode, Decode, Debug)]
+    pub struct AssetSwapInfo<AssetId, Balance, PoolId> {
+        /// The pool the swap occurred
+        pub pool_id: PoolId,
+        /// Asset to swap from.
+        pub asset_in: AssetId,
+        /// Amount to exchange.
+        ///
+        /// The amount exchanged
+        pub amount_in: Balance,
+        /// Asset to swap into.
+        pub asset_out: AssetId,
+        /// Swapped amount of asset_out.
+        pub amount_out: Balance,
     }
 
     /// Configure the pallet by specifying the parameters and types on which it depends.
@@ -230,7 +247,7 @@ pub mod pallet {
     // Pallets use events to inform users when important changes are made.
     // https://substrate.dev/docs/en/knowledgebase/runtime/events
     #[pallet::event]
-    #[pallet::metadata(T::AccountId = "AccountId")]
+    #[pallet::metadata(T::AccountId = "AccountId", T::PoolId = "Pool", T::AssetId = "Asset")]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// Amounts of assets deposited into a pool
@@ -242,13 +259,10 @@ pub mod pallet {
         /// Added a new pool. [creator, pool identifier, assets in pool]
         PoolAdded(T::AccountId, T::PoolId, Vec<T::AssetId>),
 
-        /// Swapped a set of assets [account, asset in, amount in, asset out, amount out]
+        /// Swapped a set of assets [account, asset swaps]
         Swapped(
             T::AccountId,
-            T::AssetId,
-            BalanceOf<T>,
-            T::AssetId,
-            BalanceOf<T>,
+            Vec<AssetSwapInfo<T::AssetId, BalanceOf<T>, T::PoolId>>,
         ),
 
         /// Registered an asset in the user's account deposit [owner, asset identifiers]
@@ -531,7 +545,7 @@ pub mod pallet {
             Ok(().into())
         }
 
-        /// Swap some tokens via a series of asset swap actions.
+        /// Swap some assets via a series of asset swap actions.
         ///
         /// `referral_account` is an optional account that also should get paid for this swap
         /// according to the pool's referral fee.
@@ -551,6 +565,8 @@ pub mod pallet {
             let exchange_account = ExchangeAccount::<T>::get();
 
             let mut prev_amount = None;
+            let mut swapped = Vec::with_capacity(swap_actions.len());
+
             for swap in swap_actions {
                 let AssetSwap {
                     pool_id,
@@ -579,8 +595,25 @@ pub mod pallet {
                 )?;
 
                 account_deposit.add(&asset_out, amount_out)?;
+
+                swapped.push(AssetSwapInfo {
+                    pool_id,
+                    asset_in,
+                    amount_in,
+                    asset_out,
+                    amount_out,
+                });
+
                 prev_amount = Some(amount_out);
             }
+
+            // send back to storage
+            DepositedAmounts::<T>::insert(who.clone(), account_deposit);
+            for (pool_id, pool) in pools {
+                Pools::<T>::insert(pool_id, pool);
+            }
+
+            Self::deposit_event(Event::Swapped(who, swapped));
 
             Ok(().into())
         }
