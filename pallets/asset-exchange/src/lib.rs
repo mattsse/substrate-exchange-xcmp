@@ -15,22 +15,23 @@
 //!
 #![cfg_attr(not(feature = "std"), no_std)]
 
-pub use pallet::*;
-
-mod pool;
-
 #[cfg(test)]
 mod mock;
 
 #[cfg(test)]
 mod tests;
 
+pub use pallet::*;
+
+mod pool;
+
 #[frame_support::pallet]
 pub mod pallet {
     use crate::pool::{BasicPool, Pool, PoolInfo};
-    use frame_support::sp_runtime::traits::AtLeast32BitUnsigned;
     use frame_support::sp_runtime::traits::*;
     use frame_support::traits::Currency;
+    #[cfg(feature = "std")]
+    use frame_support::traits::GenesisBuild;
     use frame_support::{dispatch::DispatchResultWithPostInfo, pallet_prelude::*};
     use frame_system::pallet_prelude::*;
     use sp_std::{collections::btree_map::BTreeMap, fmt::Debug, prelude::*};
@@ -75,12 +76,21 @@ pub mod pallet {
     }
 
     /// Information about the account's asset deposits
-    #[derive(Encode, Decode, Clone, Default, Debug)]
+    #[derive(Encode, Decode, Clone, Debug)]
     pub struct AccountDeposit<T: Config> {
         /// balance of native currency sent to the exchange
         pub amount: BalanceOf<T>,
         /// Amounts of various assets in this account.
         pub assets: BTreeMap<T::AssetId, BalanceOf<T>>,
+    }
+
+    impl<T: Config> Default for AccountDeposit<T> {
+        fn default() -> Self {
+            Self {
+                amount: BalanceOf::<T>::zero(),
+                assets: BTreeMap::new(),
+            }
+        }
     }
 
     impl<T: Config> AccountDeposit<T> {
@@ -178,7 +188,7 @@ pub mod pallet {
         type MaxPoolLimit: Get<u64>;
 
         /// Representation of Assets
-        type AssetId: Member + Parameter + Ord;
+        type AssetId: Member + Parameter + Ord + MaybeSerializeDeserialize;
 
         /// Main currency
         type Currency: Currency<Self::AccountId>;
@@ -243,6 +253,54 @@ pub mod pallet {
     #[pallet::getter(fn allowed_assets)]
     /// set of assets allowed by the owner of the exchange
     pub type AllowedAssets<T: Config> = StorageMap<_, Blake2_128Concat, T::AssetId, ()>;
+
+    #[pallet::genesis_config]
+    pub struct GenesisConfig<T: Config> {
+        pub allowed_assets: Vec<T::AssetId>,
+        pub exchange_account: Option<T::AccountId>,
+    }
+
+    #[cfg(feature = "std")]
+    impl<T: Config> Default for GenesisConfig<T> {
+        fn default() -> Self {
+            Self {
+                allowed_assets: Default::default(),
+                exchange_account: Default::default(),
+            }
+        }
+    }
+
+    #[pallet::genesis_build]
+    impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
+        fn build(&self) {
+            if let Some(acc) = self.exchange_account.clone() {
+                ExchangeAccount::<T>::put(acc);
+            }
+            for asset in self.allowed_assets.iter() {
+                AllowedAssets::<T>::insert(asset.clone(), ());
+            }
+        }
+    }
+
+    #[cfg(feature = "std")]
+    impl<T: Config> GenesisConfig<T> {
+        /// Direct implementation of `GenesisBuild::build_storage`.
+        ///
+        /// Kept in order not to break dependency.
+        pub fn build_storage(&self) -> Result<frame_support::sp_runtime::Storage, String> {
+            <Self as GenesisBuild<T>>::build_storage(self)
+        }
+
+        /// Direct implementation of `GenesisBuild::assimilate_storage`.
+        ///
+        /// Kept in order not to break dependency.
+        pub fn assimilate_storage(
+            &self,
+            storage: &mut frame_support::sp_runtime::Storage,
+        ) -> Result<(), String> {
+            <Self as GenesisBuild<T>>::assimilate_storage(self, storage)
+        }
+    }
 
     // Pallets use events to inform users when important changes are made.
     // https://substrate.dev/docs/en/knowledgebase/runtime/events
