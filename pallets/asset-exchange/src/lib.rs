@@ -111,7 +111,7 @@ pub mod pallet {
             Ok(new_balance)
         }
 
-        /// Mocks subtracting from the users balance
+        /// Mocks subtracting from the user's balance
         fn can_sub(
             &self,
             asset_id: &T::AssetId,
@@ -123,12 +123,25 @@ pub mod pallet {
                 .ok_or(Error::<T>::NotEnoughBalance)
         }
 
-        /// Adds amount to the balance of given asset.
-        pub fn add(&mut self, asset_id: &T::AssetId, amount: BalanceOf<T>) -> Result<(), Error<T>> {
+        /// Mocks adding to the user's balance
+        pub fn can_add(
+            &mut self,
+            asset_id: &T::AssetId,
+            amount: BalanceOf<T>,
+        ) -> Result<BalanceOf<T>, Error<T>> {
             let value = self
                 .assets
                 .get_mut(asset_id)
                 .ok_or(Error::<T>::AssetNotFound)?;
+            value
+                .checked_add(&amount)
+                .ok_or(Error::<T>::StorageOverflow)
+        }
+
+        /// Adds amount to the balance of given asset.
+        pub fn add(&mut self, asset_id: &T::AssetId, amount: BalanceOf<T>) -> Result<(), Error<T>> {
+            let value = self.assets.entry(asset_id.clone()).or_default();
+
             let new_balance = value
                 .checked_add(&amount)
                 .ok_or(Error::<T>::StorageOverflow)?;
@@ -308,11 +321,11 @@ pub mod pallet {
     #[pallet::metadata(T::AccountId = "AccountId", T::PoolId = "Pool", T::AssetId = "Asset")]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        /// Amounts of assets deposited into a pool
+        /// Amounts of assets deposited into a pool [account, added liquidity]
         AddedLiquidity(T::AccountId, Vec<AssetBalance<T::AssetId, BalanceOf<T>>>),
 
-        /// Amounts of assets withdrawn from a pool
-        RemovedLiquidity,
+        /// Amounts of assets withdrawn from a pool [account, removed liquidity]
+        RemovedLiquidity(T::AccountId, Vec<AssetBalance<T::AssetId, BalanceOf<T>>>),
 
         /// Added a new pool. [creator, pool identifier, assets in pool]
         PoolAdded(T::AccountId, T::PoolId, Vec<T::AssetId>),
@@ -337,6 +350,12 @@ pub mod pallet {
 
         /// Deposited into user's account [previous account, new account]
         SetExchangeAccount(Option<T::AccountId>, T::AccountId),
+
+        /// Fired when a new asset was activated on this exchange [asset id]
+        AssetActivated(T::AssetId),
+
+        /// Fired when a new user is registered [account id]
+        UserRegistered(T::AccountId),
     }
 
     // Errors inform users that something went wrong.
@@ -392,7 +411,55 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo {
             T::ExchangeAdmin::ensure_origin(origin)?;
             let old = ExchangeAccount::<T>::mutate(|old| old.replace(new_account.clone()));
+
+            DepositedAmounts::<T>::mutate(&new_account, |maybe_deposit| {
+                if maybe_deposit.is_none() {
+                    *maybe_deposit = Some(AccountDeposit::default())
+                }
+            });
+
             Self::deposit_event(Event::SetExchangeAccount(old, new_account));
+
+            Ok(().into())
+        }
+
+        /// Allows trading for a specific asset on this exchange
+        #[pallet::weight(10_000)]
+        pub fn allow_asset(origin: OriginFor<T>, asset: T::AssetId) -> DispatchResultWithPostInfo {
+            T::ExchangeAdmin::ensure_origin(origin)?;
+
+            AllowedAssets::<T>::insert(asset.clone(), ());
+
+            Self::deposit_event(Event::AssetActivated(asset));
+
+            Ok(().into())
+        }
+
+        /// Remove liquidity the pool
+        #[pallet::weight(10_000)]
+        pub fn remove_liquidity(
+            origin: OriginFor<T>,
+            pool_id: T::PoolId,
+            shares: BalanceOf<T>,
+            min_amounts: Vec<AssetBalance<T::AssetId, BalanceOf<T>>>,
+        ) -> DispatchResultWithPostInfo {
+            let who = ensure_signed(origin)?;
+
+            let mut deposit =
+                DepositedAmounts::<T>::try_get(&who).map_err(|_| Error::<T>::AccountNotFound)?;
+
+            let withdrawn = Pools::<T>::try_mutate(&pool_id, |maybe_pool| match maybe_pool {
+                None => Err(Error::<T>::PoolNotFound),
+                Some(pool) => pool.remove_liquidity(&who, shares, min_amounts),
+            })?;
+
+            for output in &withdrawn {
+                deposit.add(&output.asset, output.amount)?;
+            }
+
+            DepositedAmounts::<T>::insert(who.clone(), deposit);
+
+            Self::deposit_event(Event::RemovedLiquidity(who, withdrawn));
 
             Ok(().into())
         }
@@ -528,9 +595,25 @@ pub mod pallet {
             Ok(().into())
         }
 
+        /// Registers a user to use the exchange
+        #[pallet::weight(10_000)]
+        pub fn register_user(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
+            let who = ensure_signed(origin)?;
+
+            DepositedAmounts::<T>::mutate(&who, |maybe_deposit| {
+                if maybe_deposit.is_none() {
+                    *maybe_deposit = Some(AccountDeposit::default())
+                }
+            });
+
+            Self::deposit_event(Event::UserRegistered(who));
+
+            Ok(().into())
+        }
+
         /// Deposit assets to the user's account.
         ///
-        /// Fails if account is not registered or if the assent is not allowed on the exchange.
+        /// Fails if account is not registered or if the asset is not allowed on the exchange.
         #[pallet::weight(10_000)]
         pub fn deposit(
             origin: OriginFor<T>,
@@ -637,8 +720,11 @@ pub mod pallet {
                     Pools::<T>::try_get(&pool_id).map_err(|_| Error::<T>::PoolNotFound)?,
                 );
 
-                let amount_in =
-                    amount_in.unwrap_or(prev_amount.take().ok_or(Error::<T>::MissingSwapAmountIn)?);
+                let amount_in = if let Some(amount_in) = amount_in {
+                    amount_in
+                } else {
+                    prev_amount.take().ok_or(Error::<T>::MissingSwapAmountIn)?
+                };
 
                 // withdraw from users account
                 account_deposit.sub(&asset_in, amount_in)?;

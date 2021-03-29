@@ -79,9 +79,9 @@ impl<T: Config> Pool<T> {
     }
 
     /// The total number of shares in this pool.
-    pub fn share_total_balance(&self) -> &BalanceOf<T> {
+    pub fn total_share_supply(&self) -> &BalanceOf<T> {
         match self {
-            Pool::BasicPool(inner) => inner.share_total_balance(),
+            Pool::BasicPool(inner) => inner.total_share_supply(),
         }
     }
 
@@ -202,7 +202,7 @@ impl<T: Config> BasicPool<T> {
     }
 
     /// The total number of shares in this pool.
-    pub fn share_total_balance(&self) -> &BalanceOf<T> {
+    pub fn total_share_supply(&self) -> &BalanceOf<T> {
         &self.shares_total_supply
     }
 
