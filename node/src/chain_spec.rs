@@ -56,8 +56,10 @@ pub fn development_config(id: ParaId) -> ChainSpec {
                 vec![
                     get_account_id_from_seed::<sr25519::Public>("Alice"),
                     get_account_id_from_seed::<sr25519::Public>("Bob"),
+                    get_account_id_from_seed::<sr25519::Public>("Charlie"),
                     get_account_id_from_seed::<sr25519::Public>("Alice//stash"),
                     get_account_id_from_seed::<sr25519::Public>("Bob//stash"),
+                    get_account_id_from_seed::<sr25519::Public>("Charlie//stash"),
                 ],
                 id,
             )
@@ -132,5 +134,9 @@ fn testnet_genesis(
         },
         pallet_sudo: parachain_runtime::SudoConfig { key: root_key },
         parachain_info: parachain_runtime::ParachainInfoConfig { parachain_id: id },
+        pallet_asset_exchange: parachain_runtime::AssetExchangeConfig {
+            allowed_assets: vec![b"DOT".to_vec()],
+            exchange_account: Some(get_account_id_from_seed::<sr25519::Public>("Alice")),
+        },
     }
 }
