@@ -1,0 +1,109 @@
+[features]
+default = ['std']
+std = [
+    'serde',
+    'codec/std',
+    'frame-support/std',
+    'frame-system/std',
+    'sp-std/std',
+    'cumulus-pallet-parachain-system/std',
+    'cumulus-primitives-core/std',
+    'cumulus-pallet-xcm-handler/std',
+    'xcm/std',
+    'xcm-executor/std',
+    'pallet-asset-exchange/std'
+]
+
+# Cumulus dependencies
+[dependencies.parachain-info]
+default-features = false
+git = 'https://github.com/paritytech/cumulus.git'
+branch = 'rococo-v1'
+version = '0.1.0'
+
+[dependencies.cumulus-pallet-parachain-system]
+git = 'https://github.com/paritytech/cumulus.git'
+branch = 'rococo-v1'
+default-features = false
+
+[dependencies.cumulus-primitives-core]
+git = 'https://github.com/paritytech/cumulus.git'
+branch = 'rococo-v1'
+default-features = false
+
+[dependencies.cumulus-pallet-xcm-handler]
+git = 'https://github.com/paritytech/cumulus.git'
+branch = 'rococo-v1'
+default-features = false
+
+[dependencies.pallet-asset-exchange]
+default-features = false
+package = 'pallet-asset-exchange'
+path = '../asset-exchange'
+version = '3.0.0'
+
+[dependencies.codec]
+default-features = false
+features = ['derive']
+package = 'parity-scale-codec'
+version = '2.0.0'
+
+[dependencies.frame-support]
+default-features = false
+git = 'https://github.com/paritytech/substrate.git'
+branch = 'rococo-v1'
+version = '3.0.0'
+
+[dependencies.frame-system]
+default-features = false
+git = 'https://github.com/paritytech/substrate.git'
+branch = 'rococo-v1'
+version = '3.0.0'
+
+[dependencies.sp-std]
+default-features = false
+git = 'https://github.com/paritytech/substrate.git'
+branch = 'rococo-v1'
+version = '3.0.0'
+
+[dependencies]
+serde = { version = '1.0.101', optional = true }
+xcm = { git = 'https://github.com/paritytech/polkadot', branch = 'rococo-v1', default-features = false }
+xcm-executor = { git = 'https://github.com/paritytech/polkadot', branch = 'rococo-v1', default-features = false }
+
+[dev-dependencies.sp-core]
+default-features = false
+git = 'https://github.com/paritytech/substrate.git'
+branch = 'rococo-v1'
+version = '3.0.0'
+
+[dev-dependencies.sp-io]
+default-features = false
+git = 'https://github.com/paritytech/substrate.git'
+branch = 'rococo-v1'
+version = '3.0.0'
+
+[dev-dependencies.sp-runtime]
+default-features = false
+git = 'https://github.com/paritytech/substrate.git'
+branch = 'rococo-v1'
+version = '3.0.0'
+
+[dev-dependencies.pallet-balances]
+git = 'https://github.com/paritytech/substrate.git'
+branch = 'rococo-v1'
+version = '3.0.0'
+
+[package]
+authors = ['Anonymous']
+description = 'FRAME pallet with support for XCMP'
+edition = '2018'
+homepage = 'https://substrate.dev'
+license = 'Unlicense'
+name = 'pallet-asset-exchange-xcmp'
+readme = 'README.md'
+repository = 'https://github.com/paritytech/substrate/'
+version = '3.0.0'
+
+[package.metadata.docs.rs]
+targets = ['x86_64-unknown-linux-gnu']

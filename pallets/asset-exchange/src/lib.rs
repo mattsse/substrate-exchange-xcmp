@@ -78,7 +78,9 @@ pub mod pallet {
     /// Information about the account's asset deposits
     #[derive(Encode, Decode, Clone, Debug)]
     pub struct AccountDeposit<T: Config> {
-        /// balance of native currency sent to the exchange
+        /// Balance of native network currency sent to the exchange
+        ///
+        /// Only used for storage, but should be also used for trading in the future
         pub amount: BalanceOf<T>,
         /// Amounts of various assets in this account.
         pub assets: BTreeMap<T::AssetId, BalanceOf<T>>,
@@ -398,9 +400,6 @@ pub mod pallet {
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {}
 
-    // Dispatchable functions allows users to interact with the pallet and invoke state changes.
-    // These functions materialize as "extrinsics", which are often compared to transactions.
-    // Dispatchable functions must be annotated with a weight and must return a DispatchResult.
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// Sets the exchange's own that should receive fees for trades
@@ -585,10 +584,7 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
 
-            DepositedAmounts::<T>::try_mutate(&who, |maybe_deposit| match maybe_deposit {
-                None => Err(Error::<T>::AccountNotFound),
-                Some(deposit) => deposit.sub(&asset_id, amount),
-            })?;
+            Self::withdraw_asset_balance(&who, &asset_id, amount)?;
 
             Self::deposit_event(Event::WithDrawn(who, asset_id, amount));
 
@@ -613,7 +609,7 @@ pub mod pallet {
 
         /// Deposit assets to the user's account.
         ///
-        /// Fails if account is not registered or if the asset is not allowed on the exchange.
+        /// Fails if the asset is not allowed on the exchange.
         #[pallet::weight(10_000)]
         pub fn deposit(
             origin: OriginFor<T>,
@@ -627,10 +623,7 @@ pub mod pallet {
                 Error::<T>::AssetNotAllowed
             );
 
-            DepositedAmounts::<T>::try_mutate(&who, |maybe_deposit| match maybe_deposit {
-                None => Err(Error::<T>::AccountNotFound),
-                Some(deposit) => deposit.add(&asset_id, amount),
-            })?;
+            Self::deposit_asset_balance(&who, &asset_id, amount)?;
 
             Self::deposit_event(Event::Deposited(who, asset_id, amount));
 
@@ -764,7 +757,30 @@ pub mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
-        // public immutables
+        /// Adds `amount` of `asset_id` to `who`'s balance. If `who` doesn't exist, it is created.
+        pub fn deposit_asset_balance(
+            who: &T::AccountId,
+            asset_id: &T::AssetId,
+            amount: BalanceOf<T>,
+        ) -> Result<(), Error<T>> {
+            DepositedAmounts::<T>::mutate(who, |maybe_deposit| {
+                maybe_deposit
+                    .get_or_insert(Default::default())
+                    .add(asset_id, amount)
+            })
+        }
+
+        /// Withdraws the `amount` from `who`'s balance of `asset_id`
+        pub fn withdraw_asset_balance(
+            who: &T::AccountId,
+            asset_id: &T::AssetId,
+            amount: BalanceOf<T>,
+        ) -> Result<BalanceOf<T>, Error<T>> {
+            DepositedAmounts::<T>::try_mutate(&who, |maybe_deposit| match maybe_deposit {
+                None => Err(Error::<T>::AccountNotFound),
+                Some(deposit) => deposit.sub(&asset_id, amount),
+            })
+        }
 
         /// Given specific pool, returns amount of `asset_out` received swapping `amount_in` of `asset_in`.
         pub fn get_return(
