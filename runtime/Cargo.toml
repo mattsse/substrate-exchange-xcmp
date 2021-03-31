@@ -176,6 +176,12 @@ package = 'pallet-asset-exchange'
 path = '../pallets/asset-exchange'
 version = '3.0.0'
 
+[dependencies.pallet-asset-exchange-xcmp]
+default-features = false
+package = 'pallet-asset-exchange-xcmp'
+path = '../pallets/asset-exchange-xcmp'
+version = '3.0.0'
+
 
 # Cumulus dependencies
 [dependencies.parachain-info]
@@ -261,4 +267,8 @@ std = [
 	"xcm-builder/std",
 	"xcm-executor/std",
 	"cumulus-pallet-xcm-handler/std",
+	"pallet-asset-exchange/std",
+	"pallet-asset-exchange-xcmp/std",
+	"frame-system-rpc-runtime-api/std",
+	"pallet-transaction-payment-rpc-runtime-api/std",
 ]

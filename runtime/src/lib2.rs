@@ -2,7 +2,40 @@
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
-use cumulus_primitives_core::ParaId;
+// Make the WASM binary available.
+#[cfg(feature = "std")]
+include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
+
+use sp_api::impl_runtime_apis;
+use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
+use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, IdentifyAccount, Verify};
+use sp_runtime::{
+    create_runtime_str, generic, impl_opaque_keys,
+    transaction_validity::{TransactionSource, TransactionValidity},
+    ApplyExtrinsicResult, MultiSignature,
+};
+use sp_std::prelude::*;
+#[cfg(feature = "std")]
+use sp_version::NativeVersion;
+use sp_version::RuntimeVersion;
+
+// XCM imports
+use frame_system::{
+    limits::{BlockLength, BlockWeights},
+    EnsureRoot,
+};
+use polkadot_parachain::primitives::Sibling;
+use xcm::v0::{Junction, MultiLocation, NetworkId};
+use xcm_builder::{
+    AccountId32Aliases, CurrencyAdapter, LocationInverter, ParentIsDefault, RelayChainAsNative,
+    SiblingParachainAsNative, SiblingParachainConvertsVia, SignedAccountId32AsNative,
+    SovereignSignedViaLocation,
+};
+use xcm_executor::{
+    traits::{IsConcrete, NativeAsset},
+    Config, XcmExecutor,
+};
+
 // A few exports that help ease life for downstream crates.
 pub use frame_support::{
     construct_runtime, parameter_types,
@@ -13,47 +46,14 @@ pub use frame_support::{
     },
     StorageValue,
 };
-// XCM imports
-use frame_system::{
-    limits::{BlockLength, BlockWeights},
-    EnsureRoot,
-};
 pub use pallet_balances::Call as BalancesCall;
 pub use pallet_timestamp::Call as TimestampCall;
-use polkadot_parachain::primitives::Sibling;
-use sp_api::impl_runtime_apis;
-use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
-use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, IdentifyAccount, Verify};
 #[cfg(any(feature = "std", test))]
 pub use sp_runtime::BuildStorage;
-use sp_runtime::{
-    create_runtime_str, generic, impl_opaque_keys,
-    transaction_validity::{TransactionSource, TransactionValidity},
-    ApplyExtrinsicResult, MultiSignature,
-};
 pub use sp_runtime::{Perbill, Permill};
-use sp_std::prelude::*;
-#[cfg(feature = "std")]
-use sp_version::NativeVersion;
-use sp_version::RuntimeVersion;
-use xcm::v0::{Junction, MultiLocation, NetworkId};
-use xcm_builder::{
-    AccountId32Aliases, LocationInverter, ParentIsDefault, RelayChainAsNative,
-    SiblingParachainAsNative, SiblingParachainConvertsVia, SignedAccountId32AsNative,
-    SovereignSignedViaLocation,
-};
-use xcm_executor::{traits::NativeAsset, Config, XcmExecutor};
 
-/// Import the exchange pallets.
-pub use pallet_asset_exchange;
-pub use pallet_asset_exchange_xcmp;
-use pallet_asset_exchange_xcmp::{AssetIdConverter, U128BalanceConverter};
-
-use frame_support::sp_runtime::traits::Convert;
-
-// Make the WASM binary available.
-#[cfg(feature = "std")]
-include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
+/// Import the template pallet.
+pub use template;
 
 /// An index to a block.
 pub type BlockNumber = u32;
@@ -86,9 +86,9 @@ pub type DigestItem = generic::DigestItem<Hash>;
 /// of data like extrinsics, allowing for them to continue syncing the network through upgrades
 /// to even the core data structures.
 pub mod opaque {
-    pub use sp_runtime::OpaqueExtrinsic as UncheckedExtrinsic;
-
     use super::*;
+
+    pub use sp_runtime::OpaqueExtrinsic as UncheckedExtrinsic;
 
     /// Opaque block type.
     pub type Block = generic::Block<Header, UncheckedExtrinsic>;
@@ -293,6 +293,17 @@ type LocationConverter = (
     AccountId32Aliases<RococoNetwork, AccountId>,
 );
 
+type LocalAssetTransactor = CurrencyAdapter<
+    // Use this currency:
+    Balances,
+    // Use this currency when it is a fungible asset matching the given location or name:
+    IsConcrete<RococoLocation>,
+    // Do a simple punn to convert an AccountId32 MultiLocation into a native chain account ID:
+    LocationConverter,
+    // Our chain's account ID type (we can't get away without mentioning it explicitly):
+    AccountId,
+>;
+
 type LocalOriginConverter = (
     SovereignSignedViaLocation<LocationConverter, Origin>,
     RelayChainAsNative<RelayChainOrigin, Origin>,
@@ -305,7 +316,7 @@ impl Config for XcmConfig {
     type Call = Call;
     type XcmSender = XcmHandler;
     // How to withdraw and deposit an asset.
-    type AssetTransactor = AssetExchangeXcmp;
+    type AssetTransactor = LocalAssetTransactor;
     type OriginConverter = LocalOriginConverter;
     type IsReserve = NativeAsset;
     type IsTeleporter = ();
@@ -321,67 +332,9 @@ impl cumulus_pallet_xcm_handler::Config for Runtime {
     type AccountIdConverter = LocationConverter;
 }
 
-parameter_types! {
-    pub const InitialSharesSupply: u128 = 1_000_000_000_000_000_000_000_000;
-    pub const FeeDivisor:u128 = 10_000;
-    pub const MaxPoolLimit:u64 = 100_000_000;
-    pub const ExchangeFee:u128 = 25;
-    pub const ReferralFee:u128 = 0;
-    pub const MinNativeAssetAmount:u128 = 0;
-    pub const MinParachainAssetAmount:u128 = 0;
-}
-
-type AssetId = Vec<u8>;
-
-impl pallet_asset_exchange::Config for Runtime {
+/// Configure the pallet template in pallets/template.
+impl template::Config for Runtime {
     type Event = Event;
-    type ExchangeAdmin = EnsureRoot<AccountId>;
-    type PoolId = u64;
-    type MaxPoolLimit = MaxPoolLimit;
-    type AssetId = AssetId;
-    type Currency = pallet_balances::Module<Runtime>;
-    type FeeDivisor = FeeDivisor;
-    type ExchangeFee = ExchangeFee;
-    type ReferralFee = ReferralFee;
-    type MinNativeAssetAmount = MinNativeAssetAmount;
-    type MinParachainAssetAmount = MinParachainAssetAmount;
-    type InitSharesSupply = InitialSharesSupply;
-}
-
-parameter_types! {
-     pub const  RelayChainNetworkId: NetworkId = NetworkId::Polkadot;
-     pub OwnParachainId: ParaId = 200u32.into();
-     pub RelayChainAssetId: AssetId = b"DOT".to_vec();
-}
-
-pub struct ConvertAssetIdToLocation;
-
-impl Convert<AssetId, MultiLocation> for ConvertAssetIdToLocation {
-    fn convert(a: AssetId) -> MultiLocation {
-        MultiLocation::X1(Junction::GeneralKey(a))
-    }
-}
-
-pub struct AccountId32Convert;
-
-impl Convert<AccountId, [u8; 32]> for AccountId32Convert {
-    fn convert(a: AccountId) -> [u8; 32] {
-        a.into()
-    }
-}
-
-impl pallet_asset_exchange_xcmp::Config for Runtime {
-    type Event = Event;
-    type XcmExecutor = XcmExecutor<XcmConfig>;
-    type FromRelayChainBalance = U128BalanceConverter;
-    type ToRelayChainBalance = U128BalanceConverter;
-    type AccountIdConverter = LocationConverter;
-    type AssetIdConverter = AssetIdConverter<AssetId, RelayChainAssetId>;
-    type AssetIdLocationConverter = ConvertAssetIdToLocation;
-    type AccountId32Convert = AccountId32Convert;
-    type RelayChainNetworkId = RelayChainNetworkId;
-    type RelayChainAssetId = RelayChainAssetId;
-    type ParaId = OwnParachainId;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
@@ -400,8 +353,7 @@ construct_runtime!(
         TransactionPayment: pallet_transaction_payment::{Module, Storage},
         ParachainInfo: parachain_info::{Module, Storage, Config},
         XcmHandler: cumulus_pallet_xcm_handler::{Module, Event<T>, Origin},
-        AssetExchange: pallet_asset_exchange::{Module, Call, Config<T>, Storage, Event<T>},
-        AssetExchangeXcmp: pallet_asset_exchange_xcmp::{Module, Call, Storage, Event<T>}
+        TemplateModule: template::{Module, Call, Storage, Event<T>},
     }
 );
 
