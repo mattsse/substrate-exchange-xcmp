@@ -238,7 +238,7 @@ pub mod pallet {
     #[pallet::getter(fn deposited_amounts)]
     /// amount of deposited assets for each account
     pub type DepositedAmounts<T: Config> =
-        StorageMap<_, Blake2_128Concat, T::AccountId, AccountDeposit<T>>;
+        StorageMap<_, Blake2_128Concat, T::AccountId, AccountDeposit<T>, ValueQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn exchange_account)]
@@ -411,11 +411,11 @@ pub mod pallet {
             T::ExchangeAdmin::ensure_origin(origin)?;
             let old = ExchangeAccount::<T>::mutate(|old| old.replace(new_account.clone()));
 
-            DepositedAmounts::<T>::mutate(&new_account, |maybe_deposit| {
-                if maybe_deposit.is_none() {
-                    *maybe_deposit = Some(AccountDeposit::default())
-                }
-            });
+            // DepositedAmounts::<T>::mutate(&new_account, |maybe_deposit| {
+            //     if maybe_deposit.is_none() {
+            //         *maybe_deposit = Some(AccountDeposit::default())
+            //     }
+            // });
 
             Self::deposit_event(Event::SetExchangeAccount(old, new_account));
 
@@ -444,13 +444,12 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
 
-            let mut deposit =
-                DepositedAmounts::<T>::try_get(&who).map_err(|_| Error::<T>::AccountNotFound)?;
-
             let withdrawn = Pools::<T>::try_mutate(&pool_id, |maybe_pool| match maybe_pool {
-                None => Err(Error::<T>::PoolNotFound),
                 Some(pool) => pool.remove_liquidity(&who, shares, min_amounts),
+                _ => Err(Error::<T>::PoolNotFound),
             })?;
+
+            let mut deposit = DepositedAmounts::<T>::get(&who);
 
             for output in &withdrawn {
                 deposit.add(&output.asset, output.amount)?;
@@ -474,20 +473,19 @@ pub mod pallet {
 
             let mut asset_deposits = ensure_unique_assets::<T>(asset_deposits)?;
 
-            let mut deposit =
-                DepositedAmounts::<T>::try_get(&who).map_err(|_| Error::<T>::AccountNotFound)?;
+            let mut deposit = DepositedAmounts::<T>::get(&who);
 
             for (asset, balance) in &asset_deposits {
                 deposit.can_sub(asset, *balance)?;
             }
 
             Pools::<T>::try_mutate(&pool_id, |maybe_pool| match maybe_pool {
-                None => Err(Error::<T>::PoolNotFound),
                 Some(pool) => {
                     // NOTE: this should fail without writing to storage
                     pool.add_liquidity(&who, &mut asset_deposits)?;
                     Ok(())
                 }
+                _ => Err(Error::<T>::PoolNotFound),
             })?;
 
             for (asset, balance) in &asset_deposits {
@@ -519,23 +517,20 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
 
-            DepositedAmounts::<T>::try_mutate(&who, |maybe_deposit| match maybe_deposit {
-                None => Err(Error::<T>::AccountNotFound),
-                Some(deposit) => {
-                    for id in &asset_ids {
-                        // fail if asset already registered
-                        ensure!(!deposit.assets.contains_key(id), Error::<T>::DuplicateAsset);
-                        // TODO validate that sufficient amount is in the account
-                    }
-                    // insert empty balance for each asset
-                    deposit.assets.extend(
-                        asset_ids
-                            .iter()
-                            .cloned()
-                            .map(|id| (id, BalanceOf::<T>::zero())),
-                    );
-                    Ok(())
+            DepositedAmounts::<T>::try_mutate::<_, _, Error<T>, _>(&who, |deposit| {
+                for id in &asset_ids {
+                    // fail if asset already registered
+                    ensure!(!deposit.assets.contains_key(id), Error::<T>::DuplicateAsset);
+                    // TODO validate that sufficient amount is in the account
                 }
+                // insert empty balance for each asset
+                deposit.assets.extend(
+                    asset_ids
+                        .iter()
+                        .cloned()
+                        .map(|id| (id, BalanceOf::<T>::zero())),
+                );
+                Ok(())
             })?;
 
             Self::deposit_event(Event::RegisteredAssets(who, asset_ids));
@@ -553,21 +548,18 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
 
-            DepositedAmounts::<T>::try_mutate(&who, |maybe_deposit| match maybe_deposit {
-                None => Err(Error::<T>::AccountNotFound),
-                Some(deposit) => {
-                    for id in &asset_ids {
-                        // fail if balance is non 0
-                        if let Some(balance) = deposit.assets.get(id) {
-                            ensure!(balance.is_zero(), Error::<T>::NonZeroBalance);
-                        }
+            DepositedAmounts::<T>::try_mutate::<_, _, Error<T>, _>(&who, |deposit| {
+                for id in &asset_ids {
+                    // fail if balance is non 0
+                    if let Some(balance) = deposit.assets.get(id) {
+                        ensure!(balance.is_zero(), Error::<T>::NonZeroBalance);
                     }
-                    // remove all asset ids
-                    for id in &asset_ids {
-                        deposit.assets.remove(id);
-                    }
-                    Ok(())
                 }
+                // remove all asset ids
+                for id in &asset_ids {
+                    deposit.assets.remove(id);
+                }
+                Ok(())
             })?;
 
             Self::deposit_event(Event::UnRegisteredAssets(who, asset_ids));
@@ -587,22 +579,6 @@ pub mod pallet {
             Self::withdraw_asset_balance(&who, &asset_id, amount)?;
 
             Self::deposit_event(Event::WithDrawn(who, asset_id, amount));
-
-            Ok(().into())
-        }
-
-        /// Registers a user to use the exchange
-        #[pallet::weight(10_000)]
-        pub fn register_user(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
-            let who = ensure_signed(origin)?;
-
-            DepositedAmounts::<T>::mutate(&who, |maybe_deposit| {
-                if maybe_deposit.is_none() {
-                    *maybe_deposit = Some(AccountDeposit::default())
-                }
-            });
-
-            Self::deposit_event(Event::UserRegistered(who));
 
             Ok(().into())
         }
@@ -692,8 +668,7 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
 
-            let mut account_deposit =
-                DepositedAmounts::<T>::try_get(&who).map_err(|_| Error::<T>::AccountNotFound)?;
+            let mut account_deposit = DepositedAmounts::<T>::get(&who);
 
             let mut pools = BTreeMap::new();
             let exchange_account = ExchangeAccount::<T>::get();
@@ -763,11 +738,7 @@ pub mod pallet {
             asset_id: &T::AssetId,
             amount: BalanceOf<T>,
         ) -> Result<(), Error<T>> {
-            DepositedAmounts::<T>::mutate(who, |maybe_deposit| {
-                maybe_deposit
-                    .get_or_insert(Default::default())
-                    .add(asset_id, amount)
-            })
+            DepositedAmounts::<T>::try_mutate(who, |deposit| deposit.add(asset_id, amount))
         }
 
         /// Withdraws the `amount` from `who`'s balance of `asset_id`
@@ -776,10 +747,7 @@ pub mod pallet {
             asset_id: &T::AssetId,
             amount: BalanceOf<T>,
         ) -> Result<BalanceOf<T>, Error<T>> {
-            DepositedAmounts::<T>::try_mutate(&who, |maybe_deposit| match maybe_deposit {
-                None => Err(Error::<T>::AccountNotFound),
-                Some(deposit) => deposit.sub(&asset_id, amount),
-            })
+            DepositedAmounts::<T>::try_mutate(&who, |deposit| deposit.sub(&asset_id, amount))
         }
 
         /// Given specific pool, returns amount of `asset_out` received swapping `amount_in` of `asset_in`.
@@ -812,8 +780,8 @@ pub mod pallet {
         pub fn get_deposits(
             &self,
             account_id: &T::AccountId,
-        ) -> Option<BTreeMap<T::AssetId, BalanceOf<T>>> {
-            DepositedAmounts::<T>::get(account_id).map(|x| x.assets)
+        ) -> BTreeMap<T::AssetId, BalanceOf<T>> {
+            DepositedAmounts::<T>::get(account_id).assets
         }
     }
 }

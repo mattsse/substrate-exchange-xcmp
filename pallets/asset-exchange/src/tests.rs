@@ -26,13 +26,12 @@ fn allow_assets() {
 }
 
 #[test]
-fn register_user_and_deposit_funds() {
+fn register_and_deposit_funds() {
     new_test_ext().execute_with(|| {
         // change the owner of the exchange, who receives the exchange fees
         assert_ok!(AssetExchangeModule::set_exchange_account(Origin::root(), 3));
 
-        assert_ok!(AssetExchangeModule::register_user(Origin::signed(1)));
-        let deposit = AssetExchangeModule::deposited_amounts(&1).unwrap();
+        let deposit = AssetExchangeModule::deposited_amounts(&1);
         assert_eq!(deposit.amount, 0);
         assert!(deposit.assets.is_empty());
 
@@ -41,7 +40,7 @@ fn register_user_and_deposit_funds() {
             Origin::signed(1),
             vec![1, 2]
         ));
-        let deposit = AssetExchangeModule::deposited_amounts(&1).unwrap();
+        let deposit = AssetExchangeModule::deposited_amounts(&1);
         assert_eq!(deposit.assets.get(&1).cloned(), Some(0));
         assert_eq!(deposit.assets.len(), 2);
 
@@ -49,7 +48,7 @@ fn register_user_and_deposit_funds() {
         assert_ok!(AssetExchangeModule::deposit(Origin::signed(1), 1, 100_000));
         assert_ok!(AssetExchangeModule::deposit(Origin::signed(1), 2, 100_000));
 
-        let deposit = AssetExchangeModule::deposited_amounts(&1).unwrap();
+        let deposit = AssetExchangeModule::deposited_amounts(&1);
         assert_eq!(deposit.assets.get(&1).cloned(), Some(100_000));
         assert_eq!(deposit.assets.get(&2).cloned(), Some(100_000));
 
@@ -69,7 +68,7 @@ fn register_user_and_deposit_funds() {
             vec![AssetBalance::new(1, 100_000), AssetBalance::new(2, 100_000)]
         ));
 
-        let deposit = AssetExchangeModule::deposited_amounts(&1).unwrap();
+        let deposit = AssetExchangeModule::deposited_amounts(&1);
         assert_eq!(deposit.assets.get(&1).cloned(), Some(0));
         assert_eq!(deposit.assets.get(&2).cloned(), Some(0));
 
@@ -79,7 +78,6 @@ fn register_user_and_deposit_funds() {
             Error::<Test>::NotEnoughBalance
         );
 
-        assert_ok!(AssetExchangeModule::register_user(Origin::signed(2)));
         // register assets for the user
         assert_ok!(AssetExchangeModule::register_assets(
             Origin::signed(2),
@@ -102,7 +100,7 @@ fn register_user_and_deposit_funds() {
         ));
 
         // ensure swapped assets are back in users account
-        let deposit = AssetExchangeModule::deposited_amounts(&2).unwrap();
+        let deposit = AssetExchangeModule::deposited_amounts(&2);
         assert_eq!(deposit.assets.get(&1).cloned(), Some(90_000));
 
         // remove all liquidity from the pool
@@ -115,7 +113,7 @@ fn register_user_and_deposit_funds() {
             Vec::new()
         ));
 
-        let deposit_liquidity_provider = AssetExchangeModule::deposited_amounts(&1).unwrap();
+        let deposit_liquidity_provider = AssetExchangeModule::deposited_amounts(&1);
 
         // remove all liquidity from the exchange beneficiary's account
         let share_balance = pool.share_balances(&3).cloned().unwrap();
@@ -126,7 +124,7 @@ fn register_user_and_deposit_funds() {
             Vec::new()
         ));
 
-        let exchange_deposit = AssetExchangeModule::deposited_amounts(&3).unwrap();
+        let exchange_deposit = AssetExchangeModule::deposited_amounts(&3);
         // balance of exchange and provider liquidity provider should match swapped volume
         assert_eq!(
             exchange_deposit.assets.get(&1).cloned().unwrap()
@@ -134,7 +132,7 @@ fn register_user_and_deposit_funds() {
             110_000
         );
 
-        let swapper_deposit = AssetExchangeModule::deposited_amounts(&2).unwrap();
+        let swapper_deposit = AssetExchangeModule::deposited_amounts(&2);
 
         // asset balances should match total deposited volume
         assert_eq!(
