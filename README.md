@@ -1,15 +1,17 @@
-# Substrate Cumulus Parachain Template
+# Substrate asset exchange
 
-A new Cumulus-based Substrate node, ready for hacking :cloud:
+A substrate chain created as a learning exercise.
 
-## Upstream
+The core pallet is the [`pallet-asset-exchange`](https://github.com/mattsse/substrate-exchange-xcmp/tree/master/pallets/asset-exchange) which is a uniswap inspired exchange pallet that allows to deposit and withdraw assets and exchange them via various pools.
+Additionally the [`pallet-asset-exchange-xcmp`](https://github.com/mattsse/substrate-exchange-xcmp/tree/master/pallets/asset-exchange-xcmp) implements simple extrinsics to deposit and withdrawal assets from other parachains via [cross chain messaging](https://wiki.polkadot.network/docs/en/learn-crosschain).
 
-This project is a fork of the
-[Substrate Developer Hub Node Template](https://github.com/substrate-developer-hub/substrate-node-template).
+[Substrate Developer Hub Parachain Template](https://github.com/substrate-developer-hub/substrate-parachain-template).
+
 
 ## Build & Run
 
-Follow these steps to prepare a local Substrate development environment :hammer_and_wrench:
+To run this follow the steps of the [cumulus workshop](https://substrate.dev/cumulus-workshop/#/) with this node. :hammer_and_wrench:
+
 
 ### Setup
 
